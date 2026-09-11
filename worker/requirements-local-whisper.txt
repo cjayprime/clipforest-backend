@@ -1,0 +1,3 @@
+# Optional local transcription (TRANSCRIPTION_PROVIDER=local-whisper).
+# Disabled by default on the shared 8 GB host because it competes with renders for CPU/RAM.
+faster-whisper>=1.1,<2

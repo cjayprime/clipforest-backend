@@ -1,0 +1,978 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "SystemController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/health/ready": {
+      "get": {
+        "operationId": "SystemController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/config": {
+      "get": {
+        "operationId": "SystemController_publicConfig",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Public product limits so the UI can show file requirements and presets.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "SystemController_stream",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Per-user realtime progress stream (SSE). Clients fall back to polling GET endpoints.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/videos": {
+      "get": {
+        "operationId": "VideosController_list",
+        "parameters": [
+          {
+            "name": "filter",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "processing",
+                "ready",
+                "failed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      },
+      "post": {
+        "operationId": "VideosController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVideoDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create the durable video record before any long-running processing begins.",
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}": {
+      "get": {
+        "operationId": "VideosController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      },
+      "delete": {
+        "operationId": "VideosController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/upload-session": {
+      "post": {
+        "operationId": "VideosController_uploadSession",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Signed direct-to-storage upload information (single PUT or multipart). The file never transits the API.",
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/upload-session/parts": {
+      "post": {
+        "operationId": "VideosController_signParts",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignPartsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/upload-complete": {
+      "post": {
+        "operationId": "VideosController_uploadComplete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadCompleteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Idempotent; verifies the object exists and enqueues ingestion exactly once.",
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/process": {
+      "post": {
+        "operationId": "VideosController_process",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/analyze": {
+      "post": {
+        "operationId": "VideosController_analyze",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/candidates": {
+      "get": {
+        "operationId": "VideosController_candidates",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "score",
+                "time"
+              ]
+            }
+          },
+          {
+            "name": "minScore",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/transcript": {
+      "get": {
+        "operationId": "VideosController_transcript",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startMs",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "endMs",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/videos/{id}/playback": {
+      "get": {
+        "operationId": "VideosController_playback",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "videos"
+        ]
+      }
+    },
+    "/api/candidates/{id}/renders": {
+      "post": {
+        "operationId": "RendersController_fromCandidate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRenderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Generate Clip: creates a render from an immutable snapshot of the candidate range + settings.",
+        "tags": [
+          "renders"
+        ]
+      }
+    },
+    "/api/videos/{id}/renders": {
+      "post": {
+        "operationId": "RendersController_manual",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualRenderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Manual range render (no-candidate state) or continuation of an existing lineage.",
+        "tags": [
+          "renders"
+        ]
+      },
+      "get": {
+        "operationId": "RendersController_forVideo",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "renders"
+        ]
+      }
+    },
+    "/api/renders": {
+      "get": {
+        "operationId": "RendersController_list",
+        "parameters": [
+          {
+            "name": "videoId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "renders"
+        ]
+      }
+    },
+    "/api/renders/{id}": {
+      "get": {
+        "operationId": "RendersController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Render status + output; signed playback/download URLs are re-issued on every read.",
+        "tags": [
+          "renders"
+        ]
+      },
+      "patch": {
+        "operationId": "RendersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRenderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "renders"
+        ]
+      },
+      "delete": {
+        "operationId": "RendersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "renders"
+        ]
+      }
+    },
+    "/api/renders/{id}/rerender": {
+      "post": {
+        "operationId": "RendersController_rerender",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRenderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "renders"
+        ]
+      }
+    },
+    "/api/renders/{id}/retry": {
+      "post": {
+        "operationId": "RendersController_retry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "renders"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "ClipForest API",
+    "description": "Product API for the ClipForest AI short-form clipping platform. All endpoints require a session cookie (cf_session) or Bearer token unless marked public. Errors use the envelope { error: { code, message, retryable, correlationId } }.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "cf_session"
+      },
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateVideoDto": {
+        "type": "object",
+        "properties": {
+          "sourceType": {
+            "type": "string",
+            "description": "\"upload\" for direct-to-storage upload, \"url\" for a supported source link.",
+            "enum": [
+              "upload",
+              "url"
+            ]
+          },
+          "originalFilename": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "contentType": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "sizeBytes": {
+            "type": "number",
+            "minimum": 1
+          },
+          "sourceUrl": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "rightsConfirmed": {
+            "type": "boolean",
+            "description": "The user confirms they own or are authorized to process this content."
+          }
+        },
+        "required": [
+          "sourceType",
+          "rightsConfirmed"
+        ]
+      },
+      "SignPartsDto": {
+        "type": "object",
+        "properties": {
+          "partNumbers": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 1
+            }
+          }
+        },
+        "required": [
+          "partNumbers"
+        ]
+      },
+      "CompletedPartDto": {
+        "type": "object",
+        "properties": {
+          "partNumber": {
+            "type": "number",
+            "minimum": 1
+          },
+          "etag": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "partNumber",
+          "etag"
+        ]
+      },
+      "UploadCompleteDto": {
+        "type": "object",
+        "properties": {
+          "parts": {
+            "maxItems": 10000,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompletedPartDto"
+            }
+          },
+          "observedSizeBytes": {
+            "type": "number",
+            "description": "Size the client observed locally (informational; storage is authoritative).",
+            "minimum": 0
+          }
+        }
+      },
+      "CaptionsDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "preset": {
+            "type": "string",
+            "enum": [
+              "bold-default",
+              "karaoke",
+              "minimal",
+              "impact"
+            ]
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "CreateRenderDto": {
+        "type": "object",
+        "properties": {
+          "startMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "endMs": {
+            "type": "number",
+            "minimum": 1
+          },
+          "aspectRatio": {
+            "type": "string",
+            "enum": [
+              "9:16"
+            ]
+          },
+          "framingMode": {
+            "enum": [
+              "auto",
+              "center",
+              "fit"
+            ],
+            "type": "string"
+          },
+          "captions": {
+            "$ref": "#/components/schemas/CaptionsDto"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Render again even if an identical completed render exists."
+          }
+        }
+      },
+      "ManualRenderDto": {
+        "type": "object",
+        "properties": {
+          "startMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "endMs": {
+            "type": "number",
+            "minimum": 1
+          },
+          "aspectRatio": {
+            "type": "string",
+            "enum": [
+              "9:16"
+            ]
+          },
+          "framingMode": {
+            "enum": [
+              "auto",
+              "center",
+              "fit"
+            ],
+            "type": "string"
+          },
+          "captions": {
+            "$ref": "#/components/schemas/CaptionsDto"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Render again even if an identical completed render exists."
+          },
+          "parentRenderId": {
+            "type": "string",
+            "description": "Continue an existing render lineage (version history) instead of starting a new one.",
+            "format": "uuid"
+          }
+        }
+      },
+      "UpdateRenderDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    }
+  }
+}

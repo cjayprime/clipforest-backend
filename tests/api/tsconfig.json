@@ -1,0 +1,17 @@
+{
+  // The specs import from ../../api/src, so they need the API's compiler options —
+  // but they are not part of its build output, which is why they live in their own
+  // project rather than in api/tsconfig.json's `include`.
+  "extends": "../../api/tsconfig.json",
+  "compilerOptions": {
+    // Widened to the repo root: the specs sit outside the API's own rootDir.
+    "rootDir": "../..",
+    "noEmit": true,
+    "incremental": false,
+    // This directory has no node_modules of its own — the API's packages are the
+    // ones under test, so resolve @types from there.
+    "typeRoots": ["../../api/node_modules/@types"],
+    "types": ["jest", "node"]
+  },
+  "include": ["**/*.ts"]
+}

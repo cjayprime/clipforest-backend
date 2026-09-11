@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "declaration": false,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./",
+    // Not incremental: nest-cli's deleteOutDir wipes dist/ while a .tsbuildinfo
+    // left by an earlier build still claims it is up to date, so `npm run build`
+    // followed by `start:dev` would emit nothing and fail on a missing dist/main.
+    "incremental": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "noImplicitAny": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "resolveJsonModule": true
+  },
+  // The specs in ../tests/api type-check against these same options but are not
+  // part of the build; see ../tests/api/tsconfig.json.
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

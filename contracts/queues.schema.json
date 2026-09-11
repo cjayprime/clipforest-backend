@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipforest.dev/contracts/queues.schema.json",
+  "title": "ClipForest queue payload contracts",
+  "description": "Payloads exchanged between the NestJS API (producer) and the Python media worker (consumer/producer) over Redis/BullMQ. Payloads carry IDs and immutable parameters only; workers read durable state from PostgreSQL and R2. BullMQ prefix: 'clipforest'. Job IDs are deterministic idempotency keys (see 'jobIds').",
+  "queues": {
+    "video-ingest": { "concurrency": "1-2", "attempts": 3, "backoff": "exponential 10s", "payload": "#/$defs/IngestPayload" },
+    "transcription": { "concurrency": "2-4 hosted / 1 local", "attempts": 5, "backoff": "exponential 15s", "payload": "#/$defs/TranscriptionPayload" },
+    "analysis": { "concurrency": "4-10", "attempts": 3, "backoff": "exponential 10s", "payload": "#/$defs/AnalysisPayload" },
+    "render": { "concurrency": "1", "attempts": 2, "backoff": "exponential 30s", "payload": "#/$defs/RenderPayload" },
+    "cleanup": { "concurrency": "1", "attempts": 5, "backoff": "exponential 30s", "payload": "#/$defs/CleanupPayload" }
+  },
+  "jobIds": {
+    "video-ingest": "ingest.{videoId}.{pipelineVersion}.r{processingRun}",
+    "transcription": "transcribe.{videoId}.v{transcriptVersion}.r{processingRun}",
+    "analysis": "analyze.{videoId}.{analysisVersion}.a{analysisRun}",
+    "render": "render.{renderId}.a{attempt}",
+    "cleanup": "cleanup.{kind}.{entityId}"
+  },
+  "events": {
+    "channel": "clipforest:events",
+    "payload": "#/$defs/ProgressEvent"
+  },
+  "$defs": {
+    "IngestPayload": {
+      "type": "object",
+      "required": ["videoId", "pipelineVersion", "processingRun"],
+      "properties": {
+        "videoId": { "type": "string", "format": "uuid" },
+        "pipelineVersion": { "type": "string", "examples": ["2026-09-mvp1"] },
+        "processingRun": { "type": "integer", "minimum": 1 },
+        "correlationId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "TranscriptionPayload": {
+      "type": "object",
+      "required": ["videoId", "transcriptVersion", "processingRun"],
+      "properties": {
+        "videoId": { "type": "string", "format": "uuid" },
+        "transcriptVersion": { "type": "integer", "minimum": 1 },
+        "processingRun": { "type": "integer", "minimum": 1 },
+        "provider": { "type": "string", "examples": ["assemblyai", "deepgram", "whisper-api", "local-whisper", "mock"] },
+        "correlationId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "AnalysisPayload": {
+      "type": "object",
+      "required": ["videoId", "transcriptId", "analysisVersion", "analysisRun"],
+      "properties": {
+        "videoId": { "type": "string", "format": "uuid" },
+        "transcriptId": { "type": "string", "format": "uuid" },
+        "analysisVersion": { "type": "string", "examples": ["mvp1"] },
+        "analysisRun": { "type": "integer", "minimum": 1 },
+        "correlationId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "RenderPayload": {
+      "type": "object",
+      "required": ["renderId", "videoId", "settingsVersion", "attempt"],
+      "properties": {
+        "renderId": { "type": "string", "format": "uuid" },
+        "videoId": { "type": "string", "format": "uuid" },
+        "settingsVersion": { "type": "integer", "const": 1 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "correlationId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "CleanupPayload": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["purge-video", "janitor"] },
+        "videoId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "correlationId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ProgressEvent": {
+      "type": "object",
+      "required": ["type", "userId", "status", "at"],
+      "properties": {
+        "type": { "enum": ["video.updated", "render.updated"] },
+        "userId": { "type": "string" },
+        "videoId": { "type": "string" },
+        "renderId": { "type": "string" },
+        "status": { "type": "string" },
+        "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "stage": { "type": ["string", "null"] },
+        "substage": { "type": ["string", "null"] },
+        "errorCode": { "type": ["string", "null"] },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "RenderSettings": {
+      "type": "object",
+      "required": ["aspectRatio", "framingMode", "captions"],
+      "properties": {
+        "aspectRatio": { "const": "9:16" },
+        "framingMode": { "enum": ["auto", "center", "fit"] },
+        "captions": {
+          "type": "object",
+          "required": ["enabled", "preset"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "preset": { "enum": ["bold-default", "karaoke", "minimal", "impact"] }
+          }
+        },
+        "output": {
+          "type": "object",
+          "properties": { "width": { "const": 1080 }, "height": { "const": 1920 } }
+        }
+      }
+    }
+  }
+}

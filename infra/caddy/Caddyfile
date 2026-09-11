@@ -1,0 +1,39 @@
+# Reverse proxy / TLS for the backend host (PRD §17.1). The web app is deployed
+# separately and reaches this host over HTTPS, so only /api is served here.
+# SITE_ADDRESS=api.example.com gets automatic HTTPS; ":80" serves plain HTTP locally.
+{$SITE_ADDRESS::80} {
+	@notsse not path /api/events
+	encode @notsse zstd gzip
+
+	# Prometheus metrics are for the internal network only. This must be its own
+	# `handle` block placed before the /api/* one: `handle` blocks are mutually
+	# exclusive and evaluated in written order, whereas a bare `respond` is sorted
+	# by Caddy's directive order — which puts it *after* handle, so the reverse
+	# proxy would win and the endpoint would be served publicly.
+	handle /api/metrics {
+		respond 404
+	}
+
+	handle /api/* {
+		# Media never transits the API; JSON bodies stay small.
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy api:4000 {
+			# Stream Server-Sent Events without buffering.
+			flush_interval -1
+		}
+	}
+
+	# Nothing else lives on this host.
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
