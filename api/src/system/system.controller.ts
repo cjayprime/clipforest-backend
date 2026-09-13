@@ -5,9 +5,10 @@ import type { Response } from 'express';
 import { Observable } from 'rxjs';
 import { DataSource } from 'typeorm';
 import { config } from '../config';
+import { purchasableIntervals } from '../billing/polar/product-plan-map';
 import { AuthUser, CurrentUser, Public } from '../common/decorators';
 import { AppError } from '../common/errors';
-import { CAPTION_PRESETS, FRAMING_MODES } from '../common/render-settings';
+import { ASPECT_RATIO_KEYS, CAPTION_PRESETS, FRAMING_MODES } from '../common/render-settings';
 import { EventsService } from '../core/events.service';
 import { MetricsService } from '../core/metrics.service';
 import { QueueService } from '../core/queue.service';
@@ -59,11 +60,23 @@ export class SystemController {
       sourceHosts: config.allowedSourceHosts,
       captionPresets: CAPTION_PRESETS,
       framingModes: FRAMING_MODES,
-      aspectRatios: ['9:16'],
+      aspectRatios: ASPECT_RATIO_KEYS,
       minCandidateScore: config.minCandidateScore,
       renderMinDurationMs: config.renderMinDurationMs,
       renderMaxDurationMs: config.renderMaxDurationMs,
       pipelineVersion: config.pipelineVersion,
+      // False when no Polar access token is configured (checkout answers BILLING_NOT_CONFIGURED).
+      billingEnabled: Boolean(config.polar.accessToken),
+      // CREDIT_ROLLOVER_SHARE.
+      creditRolloverShare: config.credits.rolloverShare,
+      // Billing intervals every paid plan can be checked out on.
+      billingIntervals: purchasableIntervals(),
+      // Credit costs of processing and rendering.
+      creditCosts: {
+        enforced: config.credits.enforced,
+        perSourceMinute: config.credits.costPerSourceMinute,
+        perRender: config.credits.costPerRender,
+      },
     };
   }
 

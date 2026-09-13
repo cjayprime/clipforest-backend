@@ -97,7 +97,7 @@ export class StorageService {
   async head(key: string): Promise<{ size: number; contentType?: string } | null> {
     try {
       const out = await this.internal.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return { size: Number(out.ContentLength ?? 0), contentType: out.ContentType };
+      return { size: out.ContentLength ?? 0, contentType: out.ContentType };
     } catch (err) {
       const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
       if (e.name === 'NotFound' || e.name === 'NoSuchKey' || e.$metadata?.httpStatusCode === 404) return null;

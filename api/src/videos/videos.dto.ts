@@ -20,22 +20,22 @@ export class CreateVideoDto {
   @IsIn(['upload', 'url'])
   sourceType: 'upload' | 'url';
 
-  @ValidateIf((o) => o.sourceType === 'upload')
+  @ValidateIf((o: CreateVideoDto) => o.sourceType === 'upload')
   @IsString()
   @MaxLength(255)
   originalFilename?: string;
 
-  @ValidateIf((o) => o.sourceType === 'upload')
+  @ValidateIf((o: CreateVideoDto) => o.sourceType === 'upload')
   @IsString()
   @MaxLength(100)
   contentType?: string;
 
-  @ValidateIf((o) => o.sourceType === 'upload')
+  @ValidateIf((o: CreateVideoDto) => o.sourceType === 'upload')
   @IsInt()
   @Min(1)
   sizeBytes?: number;
 
-  @ValidateIf((o) => o.sourceType === 'url')
+  @ValidateIf((o: CreateVideoDto) => o.sourceType === 'url')
   @IsString()
   @MaxLength(2048)
   sourceUrl?: string;
@@ -50,6 +50,13 @@ export class CreateVideoDto {
   rightsConfirmed: boolean;
 }
 
+export class ListVideosQueryDto {
+  @IsOptional()
+  @IsIn(['all', 'processing', 'ready', 'failed'])
+  filter?: 'all' | 'processing' | 'ready' | 'failed';
+}
+
+/** Asks for a further batch of signed multipart URLs. */
 export class SignPartsDto {
   @IsArray()
   @ArrayMinSize(1)
@@ -59,6 +66,7 @@ export class SignPartsDto {
   partNumbers: number[];
 }
 
+/** One finished multipart part, as reported by the browser. */
 export class CompletedPartDto {
   @IsInt()
   @Min(1)
@@ -97,6 +105,7 @@ export class CandidatesQueryDto {
   minScore?: number;
 }
 
+/** A window of the transcript; the service caps how wide it may be. */
 export class TranscriptQueryDto {
   @Type(() => Number)
   @IsInt()
@@ -107,10 +116,4 @@ export class TranscriptQueryDto {
   @IsInt()
   @Min(1)
   endMs: number;
-}
-
-export class ListVideosQueryDto {
-  @IsOptional()
-  @IsIn(['all', 'processing', 'ready', 'failed'])
-  filter?: 'all' | 'processing' | 'ready' | 'failed';
 }

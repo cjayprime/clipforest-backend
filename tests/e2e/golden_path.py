@@ -2,7 +2,7 @@
 
 Exercises: auth, rights confirmation, direct-to-storage upload, idempotent
 upload-complete, ingest -> transcription -> analysis, ranked candidates, render
-with dedupe, 1080x1920 MP4 output, rerender as a new version, immutability,
+with dedupe, 1080x1920 MP4 output, rerender as a new 1:1 version, immutability,
 transcript access, SSE, and deletion.
 
 Run from the backend repo root, against a stack started per tests/README.md:
@@ -130,11 +130,12 @@ def main() -> None:
     print("adjust + rerender")
     v2 = c.post(
         f"/api/renders/{render['id']}/rerender",
-        json={"startMs": cand["startMs"] + 1000, "framingMode": "center", "captions": {"enabled": False, "preset": "minimal"}},
+        json={"startMs": cand["startMs"] + 1000, "aspectRatio": "1:1", "framingMode": "center", "captions": {"enabled": False, "preset": "minimal"}},
     ).json()
     check(v2["version"] == 2 and v2["id"] != render["id"], "rerender creates a new version")
     done2 = poll(c, f"/api/renders/{v2['id']}", {"COMPLETED", "FAILED"}, args.timeout)
     check(done2["status"] == "COMPLETED" and done2["framing"]["captions"]["enabled"] is False, "captions-off center-crop version rendered")
+    check(done2["width"] == 1080 and done2["height"] == 1080, "1:1 version is 1080x1080")
     r = c.post(f"/api/renders/{render['id']}/retry")
     check(r.status_code == 409, "completed renders are immutable")
     video_after = c.get(f"/api/videos/{vid}").json()

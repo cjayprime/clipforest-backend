@@ -1,52 +1,21 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { JobsOptions, Queue } from 'bullmq';
+import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { config } from '../config';
 import { jobIds } from '../common/idempotency';
+import type { JobsOptions } from 'bullmq';
 import { redisOptionsFromUrl } from './redis';
 
-/** Queue names and payloads mirror backend/contracts/queues.schema.json. */
-export const QUEUES = {
+/** Queue names mirror backend/contracts/queues.schema.json. */
+const QUEUES = {
   ingest: 'video-ingest',
   transcription: 'transcription',
   analysis: 'analysis',
   render: 'render',
   cleanup: 'cleanup',
 } as const;
-export type QueueKey = keyof typeof QUEUES;
 
-export interface IngestPayload {
-  videoId: string;
-  pipelineVersion: string;
-  processingRun: number;
-  correlationId?: string;
-}
-export interface TranscriptionPayload {
-  videoId: string;
-  transcriptVersion: number;
-  processingRun: number;
-  correlationId?: string;
-}
-export interface AnalysisPayload {
-  videoId: string;
-  transcriptId: string;
-  analysisVersion: string;
-  analysisRun: number;
-  correlationId?: string;
-}
-export interface RenderPayload {
-  renderId: string;
-  videoId: string;
-  settingsVersion: 1;
-  attempt: number;
-  correlationId?: string;
-}
-export interface CleanupPayload {
-  kind: 'purge-video' | 'janitor';
-  videoId?: string;
-  userId?: string;
-  correlationId?: string;
-}
+type QueueKey = keyof typeof QUEUES;
 
 const KEEP = { removeOnComplete: { age: 24 * 3600, count: 5000 }, removeOnFail: { age: 14 * 24 * 3600 } };
 
@@ -60,6 +29,48 @@ const JOB_DEFAULTS: Record<QueueKey, JobsOptions> = {
   cleanup: { attempts: 5, backoff: { type: 'exponential', delay: 30_000 }, ...KEEP },
 };
 
+/** Payloads carry IDs and immutable parameters only; the worker reads state from PostgreSQL. */
+export interface IngestPayload {
+  videoId: string;
+  pipelineVersion: string;
+  processingRun: number;
+  correlationId?: string;
+}
+
+export interface TranscriptionPayload {
+  videoId: string;
+  transcriptVersion: number;
+  processingRun: number;
+  correlationId?: string;
+}
+
+export interface AnalysisPayload {
+  videoId: string;
+  transcriptId: string;
+  analysisVersion: string;
+  analysisRun: number;
+  correlationId?: string;
+}
+
+export interface RenderPayload {
+  renderId: string;
+  videoId: string;
+  settingsVersion: 1;
+  attempt: number;
+  correlationId?: string;
+}
+
+export interface CleanupPayload {
+  kind: 'purge-video' | 'janitor';
+  videoId?: string;
+  userId?: string;
+  correlationId?: string;
+}
+
+/**
+ * The API's side of the BullMQ contract: one Queue per stage, every job carrying
+ * a deterministic ID so a repeated call can never enqueue the same work twice.
+ */
 @Injectable()
 export class QueueService implements OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
@@ -69,11 +80,11 @@ export class QueueService implements OnModuleDestroy {
   constructor() {
     if (config.openapiOnly) return;
     const connection = new IORedis(redisOptionsFromUrl(config.redisUrl));
-    connection.on('error', (err) => this.logger.warn({ err }, 'Redis connection error'));
+    connection.on('error', (err) => { this.logger.warn({ err }, 'Redis connection error'); });
     this.connection = connection;
     for (const key of Object.keys(QUEUES) as QueueKey[]) {
       const q = new Queue(QUEUES[key], { connection, prefix: config.queuePrefix, defaultJobOptions: JOB_DEFAULTS[key] });
-      q.on('error', (err) => this.logger.error({ err, queue: QUEUES[key] }, 'Queue connection error'));
+      q.on('error', (err) => { this.logger.error({ err, queue: QUEUES[key] }, 'Queue connection error'); });
       this.queues.set(key, q);
     }
   }

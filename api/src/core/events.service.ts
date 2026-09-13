@@ -4,8 +4,13 @@ import { filter, interval, map, merge, Observable, Subject } from 'rxjs';
 import { config } from '../config';
 import { redisOptionsFromUrl } from './redis';
 
+/**
+ * A progress update fanned out over Redis and SSE. Advisory only — clients
+ * reconstruct authoritative state from GET endpoints (PRD §15), so a dropped
+ * event is never a correctness problem.
+ */
 export interface ProgressEvent {
-  type: 'video.updated' | 'render.updated';
+  type: 'video.updated' | 'render.updated' | 'credits.updated' | 'subscription.updated';
   userId: string;
   videoId?: string;
   renderId?: string;
@@ -34,8 +39,8 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
     const opts = redisOptionsFromUrl(config.redisUrl);
     this.sub = new Redis(opts);
     this.pub = new Redis(opts);
-    this.sub.on('error', (err) => this.logger.warn({ err }, 'Redis subscriber error'));
-    this.pub.on('error', (err) => this.logger.warn({ err }, 'Redis publisher error'));
+    this.sub.on('error', (err) => { this.logger.warn({ err }, 'Redis subscriber error'); });
+    this.pub.on('error', (err) => { this.logger.warn({ err }, 'Redis publisher error'); });
     this.sub.on('message', (_channel, message) => {
       try {
         this.subject.next(JSON.parse(message) as ProgressEvent);
@@ -58,14 +63,17 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
   streamFor(userId: string): Observable<MessageEvent> {
     const events = this.subject.pipe(
       filter((e) => e.userId === userId),
-      map((e) => ({ type: e.type, data: e }) as MessageEvent),
+      map((e) => ({ type: e.type, data: e })),
     );
-    const heartbeat = interval(25_000).pipe(map(() => ({ type: 'ping', data: { at: new Date().toISOString() } }) as MessageEvent));
+    const heartbeat = interval(25_000).pipe(map(() => ({ type: 'ping', data: { at: new Date().toISOString() } })));
     return merge(events, heartbeat);
   }
 
   async onModuleDestroy() {
     this.subject.complete();
-    await Promise.all([this.sub?.quit(), this.pub?.quit()].filter(Boolean));
+    // Only the clients that were actually created: filter(Boolean) on the results
+    // would hand non-promises to Promise.all and not await the close at all.
+    const clients = [this.sub, this.pub].filter((c): c is Redis => c !== undefined);
+    await Promise.all(clients.map((c) => c.quit()));
   }
 }

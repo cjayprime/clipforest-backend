@@ -1,6 +1,8 @@
+/** Entity → API JSON. Maps column-named identifiers (`video_id`) to API field names (`id`). */
 import type { Candidate, Render, Video } from '../entities';
 
-function errorOf(e: {
+/** The four error columns every processable entity carries, as one API object. */
+export function errorOf(e: {
   errorCode: string | null;
   errorMessage: string | null;
   errorRetryable: boolean | null;
@@ -17,7 +19,7 @@ function errorOf(e: {
 
 export function serializeVideo(v: Video, extra: Record<string, unknown> = {}) {
   return {
-    id: v.id,
+    id: v.video_id,
     title: v.title,
     originalFilename: v.originalFilename,
     sourceType: v.sourceType,
@@ -41,7 +43,7 @@ export function serializeVideo(v: Video, extra: Record<string, unknown> = {}) {
     failedStage: v.failedStage,
     pipelineVersion: v.pipelineVersion,
     error: errorOf(v),
-    hasTranscript: Boolean(v.activeTranscriptId),
+    hasTranscript: Boolean(v.active_transcript_id),
     sourceAvailable: Boolean(v.objectKey) && !v.sourceExpiredAt,
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
@@ -53,8 +55,8 @@ export function serializeVideo(v: Video, extra: Record<string, unknown> = {}) {
 
 export function serializeCandidate(c: Candidate, extra: Record<string, unknown> = {}) {
   return {
-    id: c.id,
-    videoId: c.videoId,
+    id: c.candidate_id,
+    videoId: c.video_id,
     startMs: c.startMs,
     endMs: c.endMs,
     durationMs: c.endMs - c.startMs,
@@ -76,10 +78,10 @@ export function serializeCandidate(c: Candidate, extra: Record<string, unknown> 
 
 export function serializeRender(r: Render, extra: Record<string, unknown> = {}) {
   return {
-    id: r.id,
-    videoId: r.videoId,
-    candidateId: r.candidateId,
-    parentRenderId: r.parentRenderId,
+    id: r.render_id,
+    videoId: r.video_id,
+    candidateId: r.candidate_id,
+    parentRenderId: r.parent_render_id,
     lineageKey: r.lineageKey,
     version: r.version,
     isLatest: r.isLatest,

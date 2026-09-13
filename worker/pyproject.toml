@@ -1,6 +1,6 @@
 [project]
-name = "clipforest-worker"
+name = "cliprover-worker"
 version = "1.0.0"
-description = "ClipForest media worker: ingest, transcription, highlight analysis, smart-reframe rendering and cleanup."
+description = "ClipRover media worker: ingest, transcription, highlight analysis, smart-reframe rendering and cleanup."
 requires-python = ">=3.11"
 

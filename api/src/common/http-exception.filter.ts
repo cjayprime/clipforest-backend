@@ -1,6 +1,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
+import type { RequestWithUser } from './decorators';
 import { AppError } from './errors';
 
 /** Renders every error in the PRD §12.3 envelope with a correlation ID. */
@@ -10,9 +11,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
-    const req = ctx.getRequest<Request & { id?: string }>();
+    const req = ctx.getRequest<RequestWithUser>();
     const res = ctx.getResponse<Response>();
-    const correlationId = String(req.id ?? req.headers['x-correlation-id'] ?? '');
+    // pino-http always sets `id`, but types it ReqId (which includes object), so
+    // narrow instead of stringifying blindly.
+    const rawId: unknown = req.id;
+    const correlationId = typeof rawId === 'string' ? rawId : typeof rawId === 'number' ? String(rawId) : '';
 
     let status = 500;
     let code = 'SYSTEM_INTERNAL';

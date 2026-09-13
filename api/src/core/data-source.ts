@@ -7,6 +7,8 @@ export const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
   url: config.databaseUrl,
   entities: ENTITIES,
+  // Listed explicitly, not globbed: a migration that is not imported and added
+  // here in order is never applied.
   migrations: [Init1789040000000],
   // The schema is owned by the checked-in migrations; the Python worker shares these tables.
   synchronize: false,

@@ -11,7 +11,14 @@
     // This directory has no node_modules of its own — the API's packages are the
     // ones under test, so resolve @types from there.
     "typeRoots": ["../../api/node_modules/@types"],
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    // Specs may also import the API's dependencies directly (a Nest Logger to
+    // silence, a TypeORM error to throw). Walking up from here finds no
+    // node_modules, so fall back to the API's. Jest mirrors this with modulePaths.
+    // baseUrl is set explicitly because `paths` resolve against it, and the one
+    // inherited from api/tsconfig.json would silently point somewhere else.
+    "baseUrl": "../../api",
+    "paths": { "*": ["node_modules/*"] }
   },
   "include": ["**/*.ts"]
 }

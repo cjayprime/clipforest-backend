@@ -1,0 +1,17 @@
+{
+  "name": "@cliprover/backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Repo-level tooling for the ClipRover backend: one lint pass over the API and its tests. The API itself is a separate package in api/.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "lint": "eslint api/src tests/api",
+    "lint:fix": "eslint api/src tests/api --fix"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
+    "typescript-eslint": "^8.70.0"
+  }
+}

@@ -15,7 +15,7 @@ import { StorageService } from './storage.service';
  */
 function databaseImports(): DynamicModule[] {
   if (config.openapiOnly) return [];
-  return [TypeOrmModule.forRoot(dataSourceOptions) as DynamicModule, TypeOrmModule.forFeature(ENTITIES) as DynamicModule];
+  return [TypeOrmModule.forRoot(dataSourceOptions), TypeOrmModule.forFeature(ENTITIES)];
 }
 
 const stubProviders = config.openapiOnly

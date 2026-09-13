@@ -10,7 +10,7 @@
 | `render` | API (Generate / rerender / retry) · worker janitor | clip-local face analysis, crop path, captions, encode, upload | **1** | 2 · exp 30 s |
 | `cleanup` | API (delete) · worker janitor tick | purge deleted videos, retention, self-healing re-enqueues | 1 | 5 · exp 30 s |
 
-BullMQ prefix `clipforest`. The Node API uses `bullmq@6.3.4`; the worker uses the Python `bullmq==3.2.1`, which ships the identical Lua script set (verified), so both sides interoperate on the same queues.
+BullMQ prefix `cliprover`. The Node API uses `bullmq@6.3.4`; the worker uses the Python `bullmq==3.2.1`, which ships the identical Lua script set (verified), so both sides interoperate on the same queues.
 
 Payloads (IDs and immutable parameters only) are defined in `contracts/queues.schema.json`.
 
@@ -40,11 +40,11 @@ Video: `CREATED → UPLOADING → QUEUED → INGESTING → TRANSCRIBING → ANAL
 
 Render: `QUEUED → PREPARING → ANALYZING_VISUALS → RENDERING → UPLOADING → COMPLETED`; active → `FAILED`; `FAILED → QUEUED` via retry; `COMPLETED` is immutable — settings changes create a new version in the same lineage (`lineage_key`, `version`, `is_latest`).
 
-Both tables are enforced in TypeScript (`api/src/common/state-machine.ts`), Python (`worker/src/clipforest_worker/states.py`) and by SQL CHECK constraints in the initial migration.
+Both tables are enforced in TypeScript (`api/src/common/state-machine.ts`), Python (`worker/src/cliprover_worker/states.py`) and by SQL CHECK constraints in the initial migration.
 
 ## Progress
 
-Video progress: ingest 0–15 %, transcription 15–50 %, analysis 50–85 %, ranking/finalization 85–100 %. Render progress is separate (0–100 %). Workers write `progress`, `stage` and `substage` to PostgreSQL (throttled) and publish to Redis channel `clipforest:events`; the API fans events out per user over SSE (`GET /api/events`). Clients refetch GET endpoints on (re)connect and fall back to polling, so no state depends on a missed event. No ETA is shown.
+Video progress: ingest 0–15 %, transcription 15–50 %, analysis 50–85 %, ranking/finalization 85–100 %. Render progress is separate (0–100 %). Workers write `progress`, `stage` and `substage` to PostgreSQL (throttled) and publish to Redis channel `cliprover:events`; the API fans events out per user over SSE (`GET /api/events`). Clients refetch GET endpoints on (re)connect and fall back to polling, so no state depends on a missed event. No ETA is shown.
 
 ## Ingestion
 

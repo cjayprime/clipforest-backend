@@ -1,12 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { config } from '../config';
 import { AuthUser, CorrelationId, CurrentUser } from '../common/decorators';
+import { EntityIdPipe } from '../common/entity-id.pipe';
 import { CandidatesQueryDto, CreateVideoDto, ListVideosQueryDto, SignPartsDto, TranscriptQueryDto, UploadCompleteDto } from './videos.dto';
 import { VideosService } from './videos.service';
 
-const uuid = new ParseUUIDPipe({ version: '4' });
+const entityId = new EntityIdPipe();
 
 @ApiTags('videos')
 @Controller('videos')
@@ -26,20 +27,20 @@ export class VideosController {
   }
 
   @Get(':id')
-  get(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {
+  get(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string) {
     return this.videos.get(user.id, id);
   }
 
   /** Signed direct-to-storage upload information (single PUT or multipart). The file never transits the API. */
   @Post(':id/upload-session')
   @HttpCode(200)
-  uploadSession(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {
+  uploadSession(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string) {
     return this.videos.createUploadSession(user.id, id);
   }
 
   @Post(':id/upload-session/parts')
   @HttpCode(200)
-  signParts(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string, @Body() dto: SignPartsDto) {
+  signParts(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string, @Body() dto: SignPartsDto) {
     return this.videos.signParts(user.id, id, dto.partNumbers);
   }
 
@@ -48,7 +49,7 @@ export class VideosController {
   @HttpCode(200)
   uploadComplete(
     @CurrentUser() user: AuthUser,
-    @Param('id', uuid) id: string,
+    @Param('id', entityId) id: string,
     @Body() dto: UploadCompleteDto,
     @CorrelationId() cid: string,
   ) {
@@ -57,35 +58,35 @@ export class VideosController {
 
   @Post(':id/process')
   @HttpCode(202)
-  process(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string, @CorrelationId() cid: string) {
+  process(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string, @CorrelationId() cid: string) {
     return this.videos.process(user.id, id, cid);
   }
 
   @Throttle({ default: { limit: config.rateLimit.analyzePerMinute, ttl: 60_000 } })
   @Post(':id/analyze')
   @HttpCode(202)
-  analyze(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string, @CorrelationId() cid: string) {
+  analyze(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string, @CorrelationId() cid: string) {
     return this.videos.analyze(user.id, id, cid);
   }
 
   @Get(':id/candidates')
-  candidates(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string, @Query() q: CandidatesQueryDto) {
+  candidates(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string, @Query() q: CandidatesQueryDto) {
     return this.videos.candidates(user.id, id, q);
   }
 
   @Get(':id/transcript')
-  transcript(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string, @Query() q: TranscriptQueryDto) {
+  transcript(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string, @Query() q: TranscriptQueryDto) {
     return this.videos.transcript(user.id, id, q);
   }
 
   @Get(':id/playback')
-  playback(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {
+  playback(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string) {
     return this.videos.playback(user.id, id);
   }
 
   @Delete(':id')
   @HttpCode(202)
-  remove(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string, @CorrelationId() cid: string) {
+  remove(@CurrentUser() user: AuthUser, @Param('id', entityId) id: string, @CorrelationId() cid: string) {
     return this.videos.remove(user.id, id, cid);
   }
 }

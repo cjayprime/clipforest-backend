@@ -1,7 +1,7 @@
-from clipforest_worker import keys
-from clipforest_worker.states import can_transition_render, can_transition_video, render_sources_for, video_sources_for
-from clipforest_worker.workspace import Workspace, ensure_disk
-from clipforest_worker import errors
+from cliprover_worker import keys
+from cliprover_worker.states import can_transition_render, can_transition_video, render_sources_for, video_sources_for
+from cliprover_worker.workspace import Workspace, ensure_disk
+from cliprover_worker import errors
 
 import pytest
 

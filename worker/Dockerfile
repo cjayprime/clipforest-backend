@@ -32,4 +32,4 @@ RUN useradd --create-home --uid 10001 worker \
 USER worker
 
 EXPOSE 9100
-CMD ["python", "-m", "clipforest_worker.main"]
+CMD ["python", "-m", "cliprover_worker.main"]

@@ -7,10 +7,10 @@ All commands run from this repo's `infra/` with `--env-file ../.env`. Every user
 ```bash
 docker compose ps
 docker compose logs -f --tail=200 worker
-docker compose exec postgres psql -U clipforest -c "select id,status,stage,substage,progress,error_code,updated_at from videos order by updated_at desc limit 20;"
-docker compose exec postgres psql -U clipforest -c "select queue_name,external_job_id,attempt,status,error_code,duration_ms from job_runs order by started_at desc limit 30;"
-docker compose exec redis redis-cli --scan --pattern 'clipforest:*:wait' | xargs -I{} sh -c 'echo {} $(docker compose exec -T redis redis-cli llen {})'
-curl -s localhost:4000/api/metrics | grep clipforest_queue_jobs
+docker compose exec postgres psql -U cliprover -c "select id,status,stage,substage,progress,error_code,updated_at from videos order by updated_at desc limit 20;"
+docker compose exec postgres psql -U cliprover -c "select queue_name,external_job_id,attempt,status,error_code,duration_ms from job_runs order by started_at desc limit 30;"
+docker compose exec redis redis-cli --scan --pattern 'cliprover:*:wait' | xargs -I{} sh -c 'echo {} $(docker compose exec -T redis redis-cli llen {})'
+curl -s localhost:4000/api/metrics | grep cliprover_queue_jobs
 ```
 
 ## Transcription provider outage
@@ -39,7 +39,7 @@ Heavy jobs fail fast with `SYSTEM_LOW_DISK` (retryable) before breaching `DISK_M
 
 ## Stuck queue
 
-Symptoms: jobs waiting, none active. Check the worker is running and consuming (`WORKER_QUEUES`), look for a job stuck `active` beyond its lock (it will be moved back to wait by the stalled checker within ~1 min of the worker dying). Restart the worker: `docker compose restart worker` — jobs are idempotent. To inspect a job: `docker compose exec redis redis-cli hgetall clipforest:render:<jobId>`.
+Symptoms: jobs waiting, none active. Check the worker is running and consuming (`WORKER_QUEUES`), look for a job stuck `active` beyond its lock (it will be moved back to wait by the stalled checker within ~1 min of the worker dying). Restart the worker: `docker compose restart worker` — jobs are idempotent. To inspect a job: `docker compose exec redis redis-cli hgetall cliprover:render:<jobId>`.
 
 ## Deleting user content
 

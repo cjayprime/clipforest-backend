@@ -7,12 +7,12 @@ import openai
 import pydantic
 import pytest
 
-from clipforest_worker import errors
-from clipforest_worker.analysis.chunking import Window
-from clipforest_worker.analysis.llm import AnthropicLlm, OpenAiLlm, resolve_llm, resolve_llm_name
-from clipforest_worker.analysis.models import LlmProposal, ModelScores, WindowProposals
-from clipforest_worker.config import Settings
-from clipforest_worker.transcription.base import Segment
+from cliprover_worker import errors
+from cliprover_worker.analysis.chunking import Window
+from cliprover_worker.analysis.llm import AnthropicLlm, OpenAiLlm, resolve_llm, resolve_llm_name
+from cliprover_worker.analysis.models import LlmProposal, ModelScores, WindowProposals
+from cliprover_worker.config import Settings
+from cliprover_worker.transcription.base import Segment
 
 
 def _validation_error() -> pydantic.ValidationError:

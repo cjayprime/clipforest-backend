@@ -1,14 +1,15 @@
 import { canonicalJson, jobIds, renderSettingsHash } from '../../api/src/common/idempotency';
-import { planMultipart } from '../../api/src/common/multipart';
-import { isOwnedKey, objectKeys, sanitizeFilename } from '../../api/src/common/object-keys';
+import { objectKeys, sanitizeFilename } from '../../api/src/common/object-keys';
+import { planMultipart } from '../../api/src/videos/videos.service';
 import { buildRenderSettings, DEFAULT_RENDER_SETTINGS, validateRenderRange } from '../../api/src/common/render-settings';
 import { normalizeSourceUrl } from '../../api/src/common/source-url';
 import { canTransitionRender, canTransitionVideo, renderSourcesFor, videoSourcesFor } from '../../api/src/common/state-machine';
 import { AppError } from '../../api/src/common/errors';
 
-const U = '11111111-1111-4111-8111-111111111111';
-const V = '22222222-2222-4222-8222-222222222222';
-const R = '33333333-3333-4333-8333-333333333333';
+// Primary keys are bigint identities carried as strings.
+const U = '11';
+const V = '22';
+const R = '33';
 
 describe('state machines (PRD §29)', () => {
   it('follows the golden video path', () => {
@@ -73,12 +74,6 @@ describe('storage object keys', () => {
     expect(sanitizeFilename('')).toBe('video.mp4');
   });
 
-  it('checks ownership', () => {
-    expect(isOwnedKey(objectKeys.source(U, V, 'a.mp4'), U, V)).toBe(true);
-    expect(isOwnedKey(`users/${U}/videos/${R}/source/a.mp4`, U, V)).toBe(false);
-    expect(isOwnedKey(`users/${U}/videos/${V}/../${R}/a.mp4`, U, V)).toBe(false);
-    expect(isOwnedKey(null, U, V)).toBe(false);
-  });
 });
 
 describe('multipart planning', () => {
@@ -122,6 +117,25 @@ describe('source URL validation (SSRF defence)', () => {
 });
 
 describe('render settings and range validation', () => {
+  it('sizes the output frame for every aspect ratio', () => {
+    expect(buildRenderSettings({ aspectRatio: '9:16' }).output).toEqual({ width: 1080, height: 1920 });
+    expect(buildRenderSettings({ aspectRatio: '4:5' }).output).toEqual({ width: 1080, height: 1350 });
+    expect(buildRenderSettings({ aspectRatio: '1:1' }).output).toEqual({ width: 1080, height: 1080 });
+    expect(buildRenderSettings({ aspectRatio: '16:9' }).output).toEqual({ width: 1920, height: 1080 });
+  });
+
+  it('keeps the parent aspect ratio on rerender unless a new one is given', () => {
+    const parent = buildRenderSettings({ aspectRatio: '1:1' });
+    expect(buildRenderSettings({ framingMode: 'fit' }, parent)).toMatchObject({ aspectRatio: '1:1', output: { width: 1080, height: 1080 } });
+    expect(buildRenderSettings({ aspectRatio: '16:9' }, parent).output).toEqual({ width: 1920, height: 1080 });
+  });
+
+  it('hashes different aspect ratios as different renders', () => {
+    const hash = (aspectRatio: string) =>
+      renderSettingsHash({ videoId: V, startMs: 0, endMs: 1, settings: buildRenderSettings({ aspectRatio }), pipelineVersion: 'p' });
+    expect(new Set(['9:16', '4:5', '1:1', '16:9'].map(hash)).size).toBe(4);
+  });
+
   it('fills defaults and keeps parent settings on rerender', () => {
     expect(buildRenderSettings({})).toEqual(DEFAULT_RENDER_SETTINGS);
     const parent = buildRenderSettings({ framingMode: 'center', captions: { enabled: false, preset: 'karaoke' } });
@@ -130,17 +144,17 @@ describe('render settings and range validation', () => {
   });
 
   it('rejects unsupported aspect ratios and modes', () => {
-    expect(() => buildRenderSettings({ aspectRatio: '16:9' })).toThrow(AppError);
+    expect(() => buildRenderSettings({ aspectRatio: '2:1' })).toThrow(AppError);
     expect(() => buildRenderSettings({ framingMode: 'zoom' })).toThrow(AppError);
   });
 
   it('enforces start < end, within duration, and min/max length', () => {
-    const ok = () => validateRenderRange(1000, 31_000, 60_000, 5_000, 180_000);
+    const ok = () => { validateRenderRange(1000, 31_000, 60_000, 5_000, 180_000); };
     expect(ok).not.toThrow();
-    expect(() => validateRenderRange(-1, 10_000, 60_000, 5_000, 180_000)).toThrow(AppError);
-    expect(() => validateRenderRange(10_000, 10_000, 60_000, 5_000, 180_000)).toThrow(AppError);
-    expect(() => validateRenderRange(10_000, 70_000, 60_000, 5_000, 180_000)).toThrow(AppError);
-    expect(() => validateRenderRange(10_000, 12_000, 60_000, 5_000, 180_000)).toThrow(AppError);
-    expect(() => validateRenderRange(0, 200_000, 400_000, 5_000, 180_000)).toThrow(AppError);
+    expect(() => { validateRenderRange(-1, 10_000, 60_000, 5_000, 180_000); }).toThrow(AppError);
+    expect(() => { validateRenderRange(10_000, 10_000, 60_000, 5_000, 180_000); }).toThrow(AppError);
+    expect(() => { validateRenderRange(10_000, 70_000, 60_000, 5_000, 180_000); }).toThrow(AppError);
+    expect(() => { validateRenderRange(10_000, 12_000, 60_000, 5_000, 180_000); }).toThrow(AppError);
+    expect(() => { validateRenderRange(0, 200_000, 400_000, 5_000, 180_000); }).toThrow(AppError);
   });
 });

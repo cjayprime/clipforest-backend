@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from clipforest_worker.transcription.base import Segment, Word
+from cliprover_worker.transcription.base import Segment, Word
 
 
 def words_for(text: str, start_ms: int, word_ms: int = 280, gap_ms: int = 60) -> list[Word]:

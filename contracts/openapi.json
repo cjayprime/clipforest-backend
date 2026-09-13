@@ -128,6 +128,84 @@
         ]
       }
     },
+    "/api/auth/forgot-password": {
+      "post": {
+        "description": "Always accepted, whether or not the address has an account, so the response cannot be used to discover registered users. Delivery failures are logged server-side for the same reason.",
+        "operationId": "AuthController_forgotPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "summary": "Send a password reset link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "description": "Single use and time limited. On success the caller is signed in and every session issued before the change stops working.",
+        "operationId": "AuthController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Redeem a password reset link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "description": "Requires the current password. Other devices are signed out; this one is issued a fresh session.",
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Change the signed-in account password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/me": {
       "get": {
         "operationId": "AuthController_me",
@@ -139,6 +217,85 @@
         },
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/billing/balance": {
+      "get": {
+        "operationId": "BillingController_balance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Credit balance and current plan",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/billing/checkout": {
+      "post": {
+        "operationId": "BillingController_checkout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCheckoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Start a Polar checkout for a plan and billing interval",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/billing/checkout/{checkoutId}": {
+      "get": {
+        "operationId": "BillingController_checkoutStatus",
+        "parameters": [
+          {
+            "name": "checkoutId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Whether a completed checkout has been credited yet",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/billing/portal": {
+      "post": {
+        "operationId": "BillingController_portal",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "A short-lived link to manage or cancel the subscription",
+        "tags": [
+          "billing"
         ]
       }
     },
@@ -589,7 +746,6 @@
             "required": false,
             "in": "query",
             "schema": {
-              "format": "uuid",
               "type": "string"
             }
           }
@@ -738,8 +894,8 @@
     }
   },
   "info": {
-    "title": "ClipForest API",
-    "description": "Product API for the ClipForest AI short-form clipping platform. All endpoints require a session cookie (cf_session) or Bearer token unless marked public. Errors use the envelope { error: { code, message, retryable, correlationId } }.",
+    "title": "ClipRover API",
+    "description": "Product API for the ClipRover AI short-form clipping platform. All endpoints require a session cookie (cr_session) or Bearer token unless marked public. Errors use the envelope { error: { code, message, retryable, correlationId } }.",
     "version": "1.0.0",
     "contact": {}
   },
@@ -750,7 +906,7 @@
       "cookie": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "cf_session"
+        "name": "cr_session"
       },
       "bearer": {
         "scheme": "bearer",
@@ -761,11 +917,116 @@
     "schemas": {
       "RegisterDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
       },
       "LoginDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "ForgotPasswordDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ]
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "newPassword": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ]
+      },
+      "StartCheckoutDto": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "type": "string",
+            "enum": [
+              "starter",
+              "creator",
+              "studio"
+            ]
+          },
+          "interval": {
+            "type": "string",
+            "description": "Defaults to monthly. Annual is a separate Polar product per plan.",
+            "enum": [
+              "month",
+              "year"
+            ]
+          }
+        },
+        "required": [
+          "plan"
+        ]
       },
       "CreateVideoDto": {
         "type": "object",
@@ -891,10 +1152,13 @@
             "minimum": 1
           },
           "aspectRatio": {
-            "type": "string",
             "enum": [
-              "9:16"
-            ]
+              "9:16",
+              "4:5",
+              "1:1",
+              "16:9"
+            ],
+            "type": "string"
           },
           "framingMode": {
             "enum": [
@@ -929,10 +1193,13 @@
             "minimum": 1
           },
           "aspectRatio": {
-            "type": "string",
             "enum": [
-              "9:16"
-            ]
+              "9:16",
+              "4:5",
+              "1:1",
+              "16:9"
+            ],
+            "type": "string"
           },
           "framingMode": {
             "enum": [
@@ -955,8 +1222,7 @@
           },
           "parentRenderId": {
             "type": "string",
-            "description": "Continue an existing render lineage (version history) instead of starting a new one.",
-            "format": "uuid"
+            "description": "Continue an existing render lineage (version history) instead of starting a new one."
           }
         }
       },

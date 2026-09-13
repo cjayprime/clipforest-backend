@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://clipforest.dev/contracts/queues.schema.json",
-  "title": "ClipForest queue payload contracts",
-  "description": "Payloads exchanged between the NestJS API (producer) and the Python media worker (consumer/producer) over Redis/BullMQ. Payloads carry IDs and immutable parameters only; workers read durable state from PostgreSQL and R2. BullMQ prefix: 'clipforest'. Job IDs are deterministic idempotency keys (see 'jobIds').",
+  "$id": "https://cliprover.dev/contracts/queues.schema.json",
+  "title": "ClipRover queue payload contracts",
+  "description": "Payloads exchanged between the NestJS API (producer) and the Python media worker (consumer/producer) over Redis/BullMQ. Payloads carry IDs and immutable parameters only; workers read durable state from PostgreSQL and R2. BullMQ prefix: 'cliprover'. Job IDs are deterministic idempotency keys (see 'jobIds'). Entity IDs are bigint identities (users.user_id, videos.video_id, ...) carried as strings, because a 64-bit integer does not survive JSON number parsing intact.",
   "queues": {
     "video-ingest": { "concurrency": "1-2", "attempts": 3, "backoff": "exponential 10s", "payload": "#/$defs/IngestPayload" },
     "transcription": { "concurrency": "2-4 hosted / 1 local", "attempts": 5, "backoff": "exponential 15s", "payload": "#/$defs/TranscriptionPayload" },
@@ -18,7 +18,7 @@
     "cleanup": "cleanup.{kind}.{entityId}"
   },
   "events": {
-    "channel": "clipforest:events",
+    "channel": "cliprover:events",
     "payload": "#/$defs/ProgressEvent"
   },
   "$defs": {
@@ -26,7 +26,7 @@
       "type": "object",
       "required": ["videoId", "pipelineVersion", "processingRun"],
       "properties": {
-        "videoId": { "type": "string", "format": "uuid" },
+        "videoId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
         "pipelineVersion": { "type": "string", "examples": ["2026-09-mvp1"] },
         "processingRun": { "type": "integer", "minimum": 1 },
         "correlationId": { "type": "string" }
@@ -37,7 +37,7 @@
       "type": "object",
       "required": ["videoId", "transcriptVersion", "processingRun"],
       "properties": {
-        "videoId": { "type": "string", "format": "uuid" },
+        "videoId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
         "transcriptVersion": { "type": "integer", "minimum": 1 },
         "processingRun": { "type": "integer", "minimum": 1 },
         "provider": { "type": "string", "examples": ["assemblyai", "deepgram", "whisper-api", "local-whisper", "mock"] },
@@ -49,8 +49,8 @@
       "type": "object",
       "required": ["videoId", "transcriptId", "analysisVersion", "analysisRun"],
       "properties": {
-        "videoId": { "type": "string", "format": "uuid" },
-        "transcriptId": { "type": "string", "format": "uuid" },
+        "videoId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
+        "transcriptId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
         "analysisVersion": { "type": "string", "examples": ["mvp1"] },
         "analysisRun": { "type": "integer", "minimum": 1 },
         "correlationId": { "type": "string" }
@@ -61,8 +61,8 @@
       "type": "object",
       "required": ["renderId", "videoId", "settingsVersion", "attempt"],
       "properties": {
-        "renderId": { "type": "string", "format": "uuid" },
-        "videoId": { "type": "string", "format": "uuid" },
+        "renderId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
+        "videoId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
         "settingsVersion": { "type": "integer", "const": 1 },
         "attempt": { "type": "integer", "minimum": 1 },
         "correlationId": { "type": "string" }
@@ -74,8 +74,8 @@
       "required": ["kind"],
       "properties": {
         "kind": { "enum": ["purge-video", "janitor"] },
-        "videoId": { "type": "string", "format": "uuid" },
-        "userId": { "type": "string", "format": "uuid" },
+        "videoId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
+        "userId": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$" },
         "correlationId": { "type": "string" }
       },
       "additionalProperties": false

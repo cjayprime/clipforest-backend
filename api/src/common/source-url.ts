@@ -1,13 +1,14 @@
-import { Errors } from './errors';
-
 /**
  * URL ingestion input validation (PRD §5 FR-ING-002, §18 SSRF). Source URLs are
  * untrusted: only allow-listed hosts are accepted and the URL is rebuilt from
  * the parsed video ID, so nothing user-controlled other than the ID reaches the
  * downloader.
  */
+import { Errors } from './errors';
+
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 
+/** A source link reduced to the only parts the downloader is allowed to see. */
 export interface NormalizedSource {
   provider: 'youtube';
   externalId: string;
@@ -34,11 +35,11 @@ export function normalizeSourceUrl(raw: string, allowedHosts: readonly string[])
 
   let id: string | null = null;
   if (host === 'youtu.be') {
-    id = url.pathname.split('/').filter(Boolean)[0] ?? null;
+    id = url.pathname.split('/').find(Boolean) ?? null;
   } else if (url.pathname === '/watch') {
     id = url.searchParams.get('v');
   } else {
-    const m = url.pathname.match(/^\/(?:shorts|live|embed)\/([^/?#]+)/);
+    const m = /^\/(?:shorts|live|embed)\/([^/?#]+)/.exec(url.pathname);
     id = m?.[1] ?? null;
   }
   if (!id || !YT_ID.test(id)) {

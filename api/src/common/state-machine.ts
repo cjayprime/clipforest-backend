@@ -1,6 +1,7 @@
 /**
- * Reference state machines (PRD §29). The API and the Python worker share the
- * same transition tables (see worker/src/clipforest_worker/states.py).
+ * Video and render state machines (PRD §29). The status vocabularies are
+ * enforced by SQL CHECK constraints, and the transition tables are shared with
+ * the Python worker (see worker/src/<package>/states.py).
  */
 
 export const VIDEO_STATUSES = [
@@ -13,27 +14,11 @@ export const VIDEO_STATUSES = [
   'READY',
   'FAILED',
 ] as const;
+
 export type VideoStatus = (typeof VIDEO_STATUSES)[number];
 
-export const RENDER_STATUSES = [
-  'QUEUED',
-  'PREPARING',
-  'ANALYZING_VISUALS',
-  'RENDERING',
-  'UPLOADING',
-  'COMPLETED',
-  'FAILED',
-] as const;
-export type RenderStatus = (typeof RENDER_STATUSES)[number];
-
+/** States in which work is in flight, so the UI keeps polling. */
 export const VIDEO_PROCESSING_STATES: readonly VideoStatus[] = ['QUEUED', 'INGESTING', 'TRANSCRIBING', 'ANALYZING'];
-export const RENDER_ACTIVE_STATES: readonly RenderStatus[] = [
-  'QUEUED',
-  'PREPARING',
-  'ANALYZING_VISUALS',
-  'RENDERING',
-  'UPLOADING',
-];
 
 const VIDEO_TRANSITIONS: Record<VideoStatus, readonly VideoStatus[]> = {
   CREATED: ['UPLOADING', 'QUEUED', 'FAILED'],
@@ -48,6 +33,22 @@ const VIDEO_TRANSITIONS: Record<VideoStatus, readonly VideoStatus[]> = {
   FAILED: ['QUEUED', 'TRANSCRIBING', 'ANALYZING'],
 };
 
+export function canTransitionVideo(from: VideoStatus, to: VideoStatus): boolean {
+  return VIDEO_TRANSITIONS[from].includes(to);
+}
+
+/** All statuses from which a transition to `to` is legal (used for atomic conditional updates). */
+export function videoSourcesFor(to: VideoStatus): VideoStatus[] {
+  return VIDEO_STATUSES.filter((s) => canTransitionVideo(s, to));
+}
+
+export const RENDER_STATUSES = ['QUEUED', 'PREPARING', 'ANALYZING_VISUALS', 'RENDERING', 'UPLOADING', 'COMPLETED', 'FAILED'] as const;
+
+export type RenderStatus = (typeof RENDER_STATUSES)[number];
+
+/** States in which a render is still working, so the UI keeps polling. */
+export const RENDER_ACTIVE_STATES: readonly RenderStatus[] = ['QUEUED', 'PREPARING', 'ANALYZING_VISUALS', 'RENDERING', 'UPLOADING'];
+
 const RENDER_TRANSITIONS: Record<RenderStatus, readonly RenderStatus[]> = {
   QUEUED: ['PREPARING', 'FAILED'],
   PREPARING: ['ANALYZING_VISUALS', 'RENDERING', 'FAILED'],
@@ -59,17 +60,8 @@ const RENDER_TRANSITIONS: Record<RenderStatus, readonly RenderStatus[]> = {
   FAILED: ['QUEUED'],
 };
 
-export function canTransitionVideo(from: VideoStatus, to: VideoStatus): boolean {
-  return VIDEO_TRANSITIONS[from]?.includes(to) ?? false;
-}
-
 export function canTransitionRender(from: RenderStatus, to: RenderStatus): boolean {
-  return RENDER_TRANSITIONS[from]?.includes(to) ?? false;
-}
-
-/** All statuses from which a transition to `to` is legal (used for atomic conditional updates). */
-export function videoSourcesFor(to: VideoStatus): VideoStatus[] {
-  return VIDEO_STATUSES.filter((s) => canTransitionVideo(s, to));
+  return RENDER_TRANSITIONS[from].includes(to);
 }
 
 export function renderSourcesFor(to: RenderStatus): RenderStatus[] {

@@ -1,7 +1,7 @@
-# ClipForest backend stack.
+# ClipRover backend stack.
 #
-# Containers are used only where they earn it: PostgreSQL, Redis, S3-compatible
-# storage, and the Python media worker (FFmpeg + OpenCV + provider SDKs).
+# Containers: PostgreSQL, Redis, S3-compatible storage, and the Python media
+# worker (FFmpeg + OpenCV + provider SDKs).
 #
 # The web app is a separate repo with its own deployment; nothing here builds or
 # serves it. It reaches this stack over HTTP at API_INTERNAL_URL.
@@ -14,20 +14,25 @@
 # Production (adds the API and Caddy containers; PRD §17.1):
 #   COMPOSE_PROFILES=apps docker compose --env-file ../.env up -d --build
 
-name: clipforest
+name: cliprover
 
 x-s3: &s3
   S3_REGION: ${S3_REGION:-us-east-1}
-  S3_BUCKET: ${S3_BUCKET:-clipforest}
-  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-clipforest}
-  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-clipforest-secret}
+  S3_BUCKET: ${S3_BUCKET:-cliprover}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-cliprover}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-cliprover-secret}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
 
 x-core: &core
-  DATABASE_URL: postgresql://${POSTGRES_USER:-clipforest}:${POSTGRES_PASSWORD:-clipforest}@postgres:5432/${POSTGRES_DB:-clipforest}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-cliprover}:${POSTGRES_PASSWORD:-cliprover}@postgres:5432/${POSTGRES_DB:-cliprover}
+  # Credit charging is decided by the API (refuse) and the worker (debit), so
+  # both must see the same values.
+  CREDITS_ENFORCED: ${CREDITS_ENFORCED:-false}
+  CREDIT_COST_PER_SOURCE_MINUTE: ${CREDIT_COST_PER_SOURCE_MINUTE:-1}
+  CREDIT_COST_PER_RENDER: ${CREDIT_COST_PER_RENDER:-1}
   REDIS_URL: redis://redis:6379
-  QUEUE_PREFIX: clipforest
-  EVENTS_CHANNEL: clipforest:events
+  QUEUE_PREFIX: cliprover
+  EVENTS_CHANNEL: cliprover:events
   PIPELINE_VERSION: ${PIPELINE_VERSION:-2026-09-mvp1}
   ANALYSIS_VERSION: ${ANALYSIS_VERSION:-mvp1}
   MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-5368709120}
@@ -39,9 +44,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-clipforest}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clipforest}
-      POSTGRES_DB: ${POSTGRES_DB:-clipforest}
+      POSTGRES_USER: ${POSTGRES_USER:-cliprover}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cliprover}
+      POSTGRES_DB: ${POSTGRES_DB:-cliprover}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -118,8 +123,8 @@ services:
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-clipforest}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-clipforest-secret}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-cliprover}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-cliprover-secret}
       # Browsers upload straight to storage, so every origin the app is served from must be allowed
       # (localhost and 127.0.0.1 are different origins — Playwright uses the latter).
       MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
@@ -135,9 +140,9 @@ services:
     profiles: ["local-s3"]
     depends_on: [minio]
     environment:
-      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-clipforest}
-      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-clipforest-secret}
-      S3_BUCKET: ${S3_BUCKET:-clipforest}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-cliprover}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-cliprover-secret}
+      S3_BUCKET: ${S3_BUCKET:-cliprover}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -160,6 +165,26 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       S3_ENDPOINT: ${S3_ENDPOINT_INTERNAL:-http://minio:9000}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-auto}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL:-no-reply@cliprover.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-ClipRover}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      MAIL_TIMEOUT_MS: ${MAIL_TIMEOUT_MS:-10000}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-60}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
+      POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+      POLAR_SERVER: ${POLAR_SERVER:-sandbox}
+      POLAR_API_BASE: ${POLAR_API_BASE:-https://api.polar.sh}
+      POLAR_PRODUCT_STARTER: ${POLAR_PRODUCT_STARTER:-}
+      POLAR_PRODUCT_CREATOR: ${POLAR_PRODUCT_CREATOR:-}
+      POLAR_PRODUCT_STUDIO: ${POLAR_PRODUCT_STUDIO:-}
+      POLAR_PRODUCT_STARTER_ANNUAL: ${POLAR_PRODUCT_STARTER_ANNUAL:-}
+      POLAR_PRODUCT_CREATOR_ANNUAL: ${POLAR_PRODUCT_CREATOR_ANNUAL:-}
+      POLAR_PRODUCT_STUDIO_ANNUAL: ${POLAR_PRODUCT_STUDIO_ANNUAL:-}
+      POLAR_WEBHOOK_TOLERANCE_SEC: ${POLAR_WEBHOOK_TOLERANCE_SEC:-300}
+      CREDIT_ROLLOVER_SHARE: ${CREDIT_ROLLOVER_SHARE:-0.9}
+      CREDIT_ANNUAL_ALLOWANCE_CRON: ${CREDIT_ANNUAL_ALLOWANCE_CRON:-0 * * * *}
       MIN_CANDIDATE_SCORE: ${MIN_CANDIDATE_SCORE:-40}
       MULTIPART_THRESHOLD_BYTES: ${MULTIPART_THRESHOLD_BYTES:-67108864}
       METRICS_TOKEN: ${METRICS_TOKEN:-}

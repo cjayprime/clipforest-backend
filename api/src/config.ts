@@ -3,9 +3,9 @@
  * docs (.env.example) stay in sync. Secrets are only ever read from the
  * environment, never from source control.
  *
- * When the API runs natively (npm run start:dev) `dotenv` loads the backend
- * repo's single .env — the same file Compose is given via --env-file, resolved
- * from this module rather than the working directory. In containers the
+ * When the API runs natively (npm run start:dev) `dotenv` loads backend/.env —
+ * the file Compose is given via --env-file — resolved from this module rather
+ * than the working directory. In containers the
  * environment comes from Docker Compose and no .env file exists.
  */
 import { resolve } from 'node:path';
@@ -29,6 +29,14 @@ function int(name: string, fallback: number): number {
   const n = Number(v);
   if (!Number.isFinite(n)) throw new Error(`Environment variable ${name} must be a number`);
   return Math.trunc(n);
+}
+
+function float(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (v === undefined || v === '') return fallback;
+  const n = Number(v);
+  if (!Number.isFinite(n)) throw new Error(`Environment variable ${name} must be a number`);
+  return n;
 }
 
 function bool(name: string, fallback: boolean): boolean {
@@ -57,19 +65,41 @@ export function loadConfig() {
     dbLogging: bool('DB_LOGGING', false),
     dbPoolSize: int('DB_POOL_SIZE', 10),
     redisUrl: str('REDIS_URL', 'redis://localhost:6379'),
-    queuePrefix: str('QUEUE_PREFIX', 'clipforest'),
-    eventsChannel: str('EVENTS_CHANNEL', 'clipforest:events'),
+    queuePrefix: str('QUEUE_PREFIX', 'cliprover'),
+    eventsChannel: str('EVENTS_CHANNEL', 'cliprover:events'),
+
+    appName: str('APP_NAME', 'ClipRover'),
 
     jwtSecret: str('JWT_SECRET', isProd ? undefined : 'dev-only-insecure-secret-change-me'),
     sessionTtlHours: int('SESSION_TTL_HOURS', 24 * 7),
     cookieSecure: bool('COOKIE_SECURE', isProd),
-    cookieName: 'cf_session',
+    cookieName: 'cr_session',
+    // Password reset links are single-use and short-lived.
+    passwordResetTtlMinutes: int('PASSWORD_RESET_TTL_MINUTES', 60),
+    // 0 = check on every request, so a password change signs other devices out
+    // immediately. It costs one indexed primary-key lookup on requests that
+    // already query the database; raise it only to trade immediacy for reads.
+    revocationCacheSeconds: int('REVOCATION_CACHE_SECONDS', 0),
+
+    mail: {
+      // auto = Brevo when BREVO_API_KEY is set, otherwise the console provider.
+      provider: str('MAIL_PROVIDER', 'auto'),
+      brevoApiKey: process.env.BREVO_API_KEY || undefined,
+      fromEmail: str('MAIL_FROM_EMAIL', 'no-reply@cliprover.local'),
+      fromName: str('MAIL_FROM_NAME', 'ClipRover'),
+      replyTo: process.env.MAIL_REPLY_TO || undefined,
+      timeoutMs: int('MAIL_TIMEOUT_MS', 10_000),
+      // Local/test only: keeps recent messages in memory and serves them from
+      // GET /api/dev/mail so the reset flow can be driven end to end. Refused
+      // in production regardless of the variable.
+      testInbox: bool('MAIL_TEST_INBOX', false) && !isProd,
+    },
 
     s3: {
       endpoint: process.env.S3_ENDPOINT || undefined,
       publicEndpoint: process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT || undefined,
       region: str('S3_REGION', 'auto'),
-      bucket: str('S3_BUCKET', 'clipforest'),
+      bucket: str('S3_BUCKET', 'cliprover'),
       accessKeyId: str('S3_ACCESS_KEY_ID', openapiOnly ? 'x' : undefined),
       secretAccessKey: str('S3_SECRET_ACCESS_KEY', openapiOnly ? 'x' : undefined),
       forcePathStyle: bool('S3_FORCE_PATH_STYLE', false),
@@ -101,6 +131,61 @@ export function loadConfig() {
       analyzePerMinute: int('RATE_LIMIT_ANALYZE_PER_MIN', 6),
       renderPerMinute: int('RATE_LIMIT_RENDER_PER_MIN', 30),
     },
+    credits: {
+      /**
+       * The share of every grant that survives into later months. At 0.9, 90% of
+       * a monthly allowance rolls over and 10% expires at the next grant.
+       */
+      rolloverShare: float('CREDIT_ROLLOVER_SHARE', 0.9),
+      /**
+       * When on, the API refuses work the balance cannot cover and the worker
+       * debits it. The worker reads the same variable.
+       */
+      enforced: bool('CREDITS_ENFORCED', false),
+      /** Charged when a video is processed, per started minute of source. */
+      costPerSourceMinute: int('CREDIT_COST_PER_SOURCE_MINUTE', 1),
+      /** Charged per clip render, including re-renders. */
+      costPerRender: int('CREDIT_COST_PER_RENDER', 1),
+      /**
+       * Cron expression for granting annual subscribers their due monthly
+       * allowance. Six-field expressions (with seconds) are accepted.
+       */
+      annualAllowanceCron: str('CREDIT_ANNUAL_ALLOWANCE_CRON', '0 * * * *'),
+    },
+
+    polar: {
+      accessToken: process.env.POLAR_ACCESS_TOKEN || undefined,
+      webhookSecret: process.env.POLAR_WEBHOOK_SECRET || undefined,
+      // 'sandbox' until real payments are switched on.
+      server: str('POLAR_SERVER', 'sandbox'),
+      /**
+       * Production is https://api.polar.sh; set the sandbox host explicitly
+       * when POLAR_SERVER=sandbox.
+       */
+      apiBase: str('POLAR_API_BASE', 'https://api.polar.sh'),
+      /**
+       * Polar product ID per plan and billing interval; how a webhook is mapped
+       * back to an allowance. Polar bills monthly and annual prices as separate
+       * products, so each plan has one of each.
+       */
+      products: {
+        starter: {
+          month: process.env.POLAR_PRODUCT_STARTER || undefined,
+          year: process.env.POLAR_PRODUCT_STARTER_ANNUAL || undefined,
+        },
+        creator: {
+          month: process.env.POLAR_PRODUCT_CREATOR || undefined,
+          year: process.env.POLAR_PRODUCT_CREATOR_ANNUAL || undefined,
+        },
+        studio: {
+          month: process.env.POLAR_PRODUCT_STUDIO || undefined,
+          year: process.env.POLAR_PRODUCT_STUDIO_ANNUAL || undefined,
+        },
+      },
+      /** Standard Webhooks replay window. */
+      webhookToleranceSec: int('POLAR_WEBHOOK_TOLERANCE_SEC', 300),
+    },
+
     metricsToken: process.env.METRICS_TOKEN || undefined,
     logLevel: str('LOG_LEVEL', isProd ? 'info' : 'debug'),
   });

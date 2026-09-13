@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { config } from '../config';
-import { IS_PUBLIC } from '../common/decorators';
+import { IS_PUBLIC, type RequestWithUser } from '../common/decorators';
 import { Errors } from '../common/errors';
 import { AuthService } from './auth.service';
 
@@ -14,18 +14,23 @@ export class AuthGuard implements CanActivate {
     private readonly auth: AuthService,
   ) {}
 
-  canActivate(ctx: ExecutionContext): boolean {
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
     if (ctx.getType() !== 'http') return true;
-    const req = ctx.switchToHttp().getRequest();
-    const header: string | undefined = req.headers.authorization;
-    const token: string | undefined =
-      req.cookies?.[config.cookieName] ?? (header?.startsWith('Bearer ') ? header.slice(7) : undefined);
-    const user = token ? this.auth.verify(token) : null;
-    if (user) req.user = user;
+    const req = ctx.switchToHttp().getRequest<RequestWithUser>();
+    const header = req.headers.authorization;
+    const cookie: unknown = req.cookies[config.cookieName];
+    const token =
+      typeof cookie === 'string' ? cookie : header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+
+    const session = token ? this.auth.verify(token) : null;
+    // A valid signature is not enough: a password change invalidates sessions
+    // issued before it, so this one may belong to a device that was signed out.
+    const live = session && !(await this.auth.isSessionRevoked(session)) ? session : null;
+    if (live) req.user = { id: live.id, email: live.email };
 
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [ctx.getHandler(), ctx.getClass()]);
     if (isPublic) return true;
-    if (!user) throw Errors.unauthorized();
+    if (!live) throw Errors.unauthorized();
     return true;
   }
 }
@@ -33,7 +38,7 @@ export class AuthGuard implements CanActivate {
 /** Rate limits per authenticated user (falls back to client IP for public routes). */
 @Injectable()
 export class UserThrottlerGuard extends ThrottlerGuard {
-  protected async getTracker(req: Record<string, any>): Promise<string> {
-    return req.user?.id ?? req.ip;
+  protected getTracker(req: RequestWithUser): Promise<string> {
+    return Promise.resolve(req.user?.id ?? req.ip ?? 'unknown');
   }
 }

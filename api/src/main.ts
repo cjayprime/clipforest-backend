@@ -10,7 +10,9 @@ import { buildOpenApi, configureApp } from './bootstrap';
 import { config } from './config';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  // rawBody: webhook signatures are computed over the exact bytes Polar sent, so
+  // the parsed JSON is useless for verification — the raw buffer must survive.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
   app.useLogger(app.get(Logger));
   app.set('trust proxy', 1);
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));

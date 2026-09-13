@@ -3,8 +3,21 @@
  * server from owned IDs and are never accepted from client input.
  */
 
-const ALLOWED_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v', 'mkv'] as const;
+/** Container formats the pipeline accepts; anything else is rejected at upload. */
+const ALLOWED_EXTENSIONS: readonly string[] = ['mp4', 'mov', 'webm', 'm4v', 'mkv'];
 
+/** The file's extension when it is one we accept, otherwise null. */
+export function fileExtension(filename: string): string | null {
+  const dot = filename.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const ext = filename.slice(dot + 1).toLowerCase();
+  return ALLOWED_EXTENSIONS.includes(ext) ? ext : null;
+}
+
+/**
+ * Reduces a user-supplied filename to something safe to embed in an object key:
+ * no directory parts, no combining marks, a bounded stem and a known extension.
+ */
 export function sanitizeFilename(input: string): string {
   const base = (input || 'video').split(/[\\/]/).pop() || 'video';
   const normalized = base.normalize('NFKD').replace(/\p{M}/gu, '');
@@ -15,15 +28,8 @@ export function sanitizeFilename(input: string): string {
     .replace(/-{2,}/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '')
     .slice(0, 80);
-  const ext = (ALLOWED_EXTENSIONS as readonly string[]).includes(rawExt) ? rawExt : 'mp4';
+  const ext = ALLOWED_EXTENSIONS.includes(rawExt) ? rawExt : 'mp4';
   return `${stem || 'video'}.${ext}`;
-}
-
-export function fileExtension(filename: string): string | null {
-  const dot = filename.lastIndexOf('.');
-  if (dot <= 0) return null;
-  const ext = filename.slice(dot + 1).toLowerCase();
-  return (ALLOWED_EXTENSIONS as readonly string[]).includes(ext) ? ext : null;
 }
 
 export const objectKeys = {
@@ -38,10 +44,3 @@ export const objectKeys = {
   renderThumb: (userId: string, videoId: string, renderId: string) =>
     `users/${userId}/videos/${videoId}/renders/${renderId}/thumb.jpg`,
 };
-
-/** Ownership check: an object key must live under the owning user's video prefix. */
-export function isOwnedKey(key: string | null | undefined, userId: string, videoId: string): boolean {
-  if (!key) return false;
-  if (key.includes('..') || key.includes('//')) return false;
-  return key.startsWith(objectKeys.videoPrefix(userId, videoId));
-}

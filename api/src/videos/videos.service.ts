@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'node:crypto';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { config } from '../config';
+import { BillingService } from '../billing/billing.service';
+import { processingCost } from '../billing/credits';
 import { AuthUser } from '../common/decorators';
 import { AppError, Errors } from '../common/errors';
-import { planMultipart } from '../common/multipart';
 import { fileExtension, objectKeys } from '../common/object-keys';
 import { serializeCandidate, serializeVideo } from '../common/serializers';
 import { normalizeSourceUrl } from '../common/source-url';
@@ -14,8 +14,23 @@ import { EventsService } from '../core/events.service';
 import { MetricsService } from '../core/metrics.service';
 import { QueueService } from '../core/queue.service';
 import { StorageService } from '../core/storage.service';
-import { Candidate, Render, Transcript, TranscriptSegmentJson, TranscriptWordJson, Video } from '../entities';
+import { Candidate, Render, Transcript, TranscriptWordJson, Video } from '../entities';
 import { CandidatesQueryDto, CreateVideoDto, ListVideosQueryDto, TranscriptQueryDto, UploadCompleteDto } from './videos.dto';
+
+const MIB = 1024 * 1024;
+
+/**
+ * Plans a multipart upload. R2 requires every part except the last to be the
+ * same size, and S3-compatible stores cap uploads at 10,000 parts, so the part
+ * size grows (in whole MiB) for very large files.
+ */
+export function planMultipart(sizeBytes: number, preferredPartBytes: number) {
+  let partSize = Math.max(preferredPartBytes, 5 * MIB);
+  if (Math.ceil(sizeBytes / partSize) > 10_000) {
+    partSize = Math.ceil(sizeBytes / 10_000 / MIB) * MIB;
+  }
+  return { partSize, partCount: Math.max(1, Math.ceil(sizeBytes / partSize)) };
+}
 
 const ACCEPTED_TYPES = [
   'video/mp4',
@@ -41,10 +56,22 @@ export class VideosService {
     private readonly queues: QueueService,
     private readonly events: EventsService,
     private readonly metrics: MetricsService,
+    private readonly billing: BillingService,
   ) {}
 
+  /**
+   * Refuses (re)processing the balance cannot cover. Applies only to videos that
+   * never reached READY. Before the probe the length is unknown, so one minute's
+   * cost is required; the worker charges the actual amount.
+   */
+  private async assertCanAffordProcessing(userId: string, v: Pick<Video, 'readyAt' | 'durationMs'>) {
+    if (v.readyAt) return;
+    const rate = config.credits.costPerSourceMinute;
+    await this.billing.assertCanAfford(userId, v.durationMs ? processingCost(v.durationMs, rate) : rate);
+  }
+
   async getOwned(userId: string, id: string): Promise<Video> {
-    const v = await this.videos.findOne({ where: { id, userId, deletedAt: IsNull() } });
+    const v = await this.videos.findOne({ where: { video_id: id, user_id: userId, deletedAt: IsNull() } });
     if (!v) throw Errors.notFound('Video');
     return v;
   }
@@ -52,8 +79,8 @@ export class VideosService {
   private publish(v: Video) {
     return this.events.publish({
       type: 'video.updated',
-      userId: v.userId,
-      videoId: v.id,
+      userId: v.user_id,
+      videoId: v.video_id,
       status: v.status,
       progress: v.progress,
       stage: v.stage,
@@ -73,7 +100,7 @@ export class VideosService {
       .createQueryBuilder()
       .update(Video)
       .set({ ...data, status: to })
-      .where('id = :id AND deleted_at IS NULL AND status IN (:...from)', { id, from: from ?? videoSourcesFor(to) })
+      .where('video_id = :id AND deleted_at IS NULL AND status IN (:...from)', { id, from: from ?? videoSourcesFor(to) })
       .execute();
     return res.affected === 1;
   }
@@ -87,11 +114,11 @@ export class VideosService {
     };
     const statuses = statusFilter[q.filter ?? 'all'];
     const videos = await this.videos.find({
-      where: { userId, deletedAt: IsNull(), ...(statuses ? { status: In(statuses) } : {}) },
+      where: { user_id: userId, deletedAt: IsNull(), ...(statuses ? { status: In(statuses) } : {}) },
       order: { createdAt: 'DESC' },
       take: 200,
     });
-    const ids = videos.map((v) => v.id);
+    const ids = videos.map((v) => v.video_id);
     const [candidateStats, renderStats] = ids.length
       ? await Promise.all([
           this.candidatesRepo
@@ -116,12 +143,12 @@ export class VideosService {
     return {
       items: await Promise.all(
         videos.map(async (v) => {
-          const s = candidatesById.get(v.id);
+          const s = candidatesById.get(v.video_id);
           return serializeVideo(v, {
             thumbnailUrl: v.thumbnailKey ? await this.storage.presignGet(v.thumbnailKey) : null,
             candidateCount: s ? Number(s.count) : 0,
             topScore: s ? Number(s.topScore) : null,
-            renderCount: rendersById.get(v.id) ?? 0,
+            renderCount: rendersById.get(v.video_id) ?? 0,
           });
         }),
       ),
@@ -129,9 +156,12 @@ export class VideosService {
   }
 
   async create(user: AuthUser, dto: CreateVideoDto, correlationId: string) {
-    if (dto.rightsConfirmed !== true) throw Errors.rightsRequired();
-    const id = randomUUID();
-    const base = { id, userId: user.id, pipelineVersion: config.pipelineVersion, rightsConfirmedAt: new Date() };
+    if (!dto.rightsConfirmed) throw Errors.rightsRequired();
+    // Checked before the upload starts.
+    await this.assertCanAffordProcessing(user.id, { readyAt: null, durationMs: null });
+    // The id is assigned by the database (bigint identity), so it only exists
+    // once the row is inserted — which is why the object key is derived after.
+    const base = { user_id: user.id, pipelineVersion: config.pipelineVersion, rightsConfirmedAt: new Date() };
 
     if (dto.sourceType === 'url') {
       const src = normalizeSourceUrl(dto.sourceUrl ?? '', config.allowedSourceHosts);
@@ -149,7 +179,7 @@ export class VideosService {
         }),
       );
       await this.queues.enqueueIngest({
-        videoId: id,
+        videoId: video.video_id,
         pipelineVersion: config.pipelineVersion,
         processingRun: 1,
         correlationId,
@@ -169,19 +199,26 @@ export class VideosService {
     }
     if ((dto.sizeBytes ?? 0) > config.maxUploadBytes) throw Errors.uploadTooLarge(config.maxUploadBytes);
 
-    const video = await this.videos.save(
-      this.videos.create({
-        ...base,
-        sourceType: 'upload',
-        sourceProvider: 'upload',
-        originalFilename: filename.slice(0, 255),
-        title: dto.title?.trim() || filename.replace(/\.[^.]+$/, '').slice(0, 200) || 'Untitled video',
-        contentType: contentType || 'application/octet-stream',
-        sizeBytes: dto.sizeBytes ?? 0,
-        objectKey: objectKeys.source(user.id, id, filename),
-        status: 'CREATED',
-      }),
-    );
+    // Insert, then derive the object key from the assigned id and write it back
+    // in the same transaction — a row without an object key could never be
+    // uploaded to, so the two must land together.
+    const video = await this.dataSource.transaction(async (m) => {
+      const created = await m.save(
+        m.create(Video, {
+          ...base,
+          sourceType: 'upload',
+          sourceProvider: 'upload',
+          originalFilename: filename.slice(0, 255),
+          title: dto.title?.trim() || filename.replace(/\.[^.]+$/, '').slice(0, 200) || 'Untitled video',
+          contentType: contentType || 'application/octet-stream',
+          sizeBytes: dto.sizeBytes ?? 0,
+          status: 'CREATED',
+        }),
+      );
+      created.objectKey = objectKeys.source(user.id, created.video_id, filename);
+      await m.update(Video, { video_id: created.video_id }, { objectKey: created.objectKey });
+      return created;
+    });
     this.metrics.videosCreated.inc({ source_type: 'upload' });
     return serializeVideo(video);
   }
@@ -192,7 +229,8 @@ export class VideosService {
     if (v.status !== 'CREATED' && v.status !== 'UPLOADING') {
       throw Errors.invalidState('The upload for this video has already been completed.');
     }
-    const size = Number(v.sizeBytes ?? 0);
+    // sizeBytes is already a number: bigintTransformer converts it on read.
+    const size = v.sizeBytes ?? 0;
     const contentType = v.contentType || 'application/octet-stream';
 
     if (size < config.multipartThresholdBytes) {
@@ -226,7 +264,7 @@ export class VideosService {
   async signParts(userId: string, id: string, partNumbers: number[]) {
     const v = await this.getOwned(userId, id);
     if (v.status !== 'UPLOADING' || !v.uploadId || !v.objectKey) throw Errors.invalidState('No multipart upload is in progress.');
-    const { partCount } = planMultipart(Number(v.sizeBytes ?? 0), config.multipartPartSizeBytes);
+    const { partCount } = planMultipart(v.sizeBytes ?? 0, config.multipartPartSizeBytes);
     const unique = [...new Set(partNumbers)];
     if (unique.some((n) => n > partCount)) throw Errors.invalidState(`Part numbers must be between 1 and ${partCount}.`);
     return {
@@ -303,10 +341,11 @@ export class VideosService {
       throw Errors.notRetryable(v.errorMessage ?? 'This video cannot be processed. Try a different file.');
     }
     if (v.sourceType === 'upload' && !v.uploadCompletedAt) throw Errors.invalidState('The upload never completed.');
+    await this.assertCanAffordProcessing(userId, v);
 
     const clearError = { errorCode: null, errorMessage: null, errorRetryable: null, errorCorrelationId: null, substage: null };
     let resumed: 'analysis' | 'transcription' | 'ingest';
-    if (v.activeTranscriptId) {
+    if (v.active_transcript_id) {
       resumed = 'analysis';
       if (!(await this.transition(id, 'ANALYZING', { ...clearError, analysisRun: () => '"analysis_run" + 1', progress: 50, stage: 'analysis' }, ['FAILED']))) {
         return serializeVideo(await this.getOwned(userId, id));
@@ -326,13 +365,13 @@ export class VideosService {
     if (resumed === 'analysis') {
       await this.queues.enqueueAnalysis({
         videoId: id,
-        transcriptId: cur.activeTranscriptId!,
+        transcriptId: cur.active_transcript_id!,
         analysisVersion: config.analysisVersion,
         analysisRun: cur.analysisRun,
         correlationId,
       });
     } else if (resumed === 'transcription') {
-      const latest = await this.transcripts.findOne({ where: { videoId: id }, order: { version: 'DESC' } });
+      const latest = await this.transcripts.findOne({ where: { video_id: id }, order: { version: 'DESC' } });
       await this.queues.enqueueTranscription({
         videoId: id,
         transcriptVersion: latest?.status === 'COMPLETED' ? latest.version + 1 : (latest?.version ?? 1),
@@ -355,8 +394,9 @@ export class VideosService {
   async analyze(userId: string, id: string, correlationId: string) {
     const v = await this.getOwned(userId, id);
     if (v.status === 'ANALYZING') return serializeVideo(v);
-    if (!v.activeTranscriptId) throw Errors.invalidState('This video has no transcript yet.');
+    if (!v.active_transcript_id) throw Errors.invalidState('This video has no transcript yet.');
     if (v.status !== 'READY' && v.status !== 'FAILED') throw Errors.invalidState('Wait for processing to finish first.');
+    await this.assertCanAffordProcessing(userId, v);
     const ok = await this.transition(
       id,
       'ANALYZING',
@@ -376,7 +416,7 @@ export class VideosService {
     if (ok) {
       await this.queues.enqueueAnalysis({
         videoId: id,
-        transcriptId: cur.activeTranscriptId!,
+        transcriptId: cur.active_transcript_id!,
         analysisVersion: config.analysisVersion,
         analysisRun: cur.analysisRun,
         correlationId,
@@ -395,7 +435,7 @@ export class VideosService {
   async playback(userId: string, id: string) {
     const v = await this.getOwned(userId, id);
     const key = v.proxyKey ?? v.objectKey;
-    const ready = Boolean(key) && Boolean(v.uploadCompletedAt || v.sourceType === 'url') && !v.sourceExpiredAt;
+    const ready = Boolean(key) && (v.uploadCompletedAt !== null || v.sourceType === 'url') && !v.sourceExpiredAt;
     return {
       sourceUrl: ready && key ? await this.storage.presignGet(key) : null,
       isProxy: Boolean(v.proxyKey),
@@ -407,18 +447,18 @@ export class VideosService {
   async candidates(userId: string, id: string, q: CandidatesQueryDto) {
     const v = await this.getOwned(userId, id);
     const all = await this.candidatesRepo.find({
-      where: { videoId: v.id, supersededAt: IsNull() },
+      where: { video_id: v.video_id, supersededAt: IsNull() },
       order: q.sort === 'time' ? { startMs: 'ASC' } : { score: 'DESC', rank: 'ASC' },
     });
     const minScore = q.minScore ?? config.minCandidateScore;
     const visible = all.filter((c) => c.score >= minScore);
     const renders = visible.length
       ? await this.renders.find({
-          where: { candidateId: In(visible.map((c) => c.id)), isLatest: true, deletedAt: IsNull() },
-          select: { id: true, candidateId: true, status: true, progress: true, version: true },
+          where: { candidate_id: In(visible.map((c) => c.candidate_id)), isLatest: true, deletedAt: IsNull() },
+          select: { render_id: true, candidate_id: true, status: true, progress: true, version: true },
         })
       : [];
-    const renderByCandidate = new Map(renders.map((r) => [r.candidateId, r]));
+    const renderByCandidate = new Map(renders.map((r) => [r.candidate_id, r]));
     return {
       videoStatus: v.status,
       analysisRun: v.analysisRun,
@@ -426,17 +466,24 @@ export class VideosService {
       defaultMinScore: config.minCandidateScore,
       total: all.length,
       hiddenCount: all.length - visible.length,
-      items: visible.map((c) => serializeCandidate(c, { latestRender: renderByCandidate.get(c.id) ?? null })),
+      items: visible.map((c) =>
+        serializeCandidate(c, {
+          latestRender: (() => {
+            const r = renderByCandidate.get(c.candidate_id);
+            return r ? { id: r.render_id, status: r.status, progress: r.progress, version: r.version } : null;
+          })(),
+        }),
+      ),
     };
   }
 
   async transcript(userId: string, id: string, q: TranscriptQueryDto) {
     const v = await this.getOwned(userId, id);
-    if (!v.activeTranscriptId) throw Errors.notFound('Transcript');
+    if (!v.active_transcript_id) throw Errors.notFound('Transcript');
     if (q.endMs <= q.startMs || q.endMs - q.startMs > 30 * 60 * 1000) {
       throw new AppError('VALIDATION_FAILED', 'Transcript ranges must be positive and at most 30 minutes.', 400);
     }
-    const t = await this.transcripts.findOne({ where: { id: v.activeTranscriptId } });
+    const t = await this.transcripts.findOne({ where: { transcript_id: v.active_transcript_id } });
     if (!t) throw Errors.notFound('Transcript');
     const overlaps = (x: TranscriptWordJson) => x.endMs > q.startMs && x.startMs < q.endMs;
     return {
@@ -444,8 +491,8 @@ export class VideosService {
       provider: t.provider,
       startMs: q.startMs,
       endMs: q.endMs,
-      segments: (t.segments as TranscriptSegmentJson[]).filter(overlaps),
-      words: (t.words as TranscriptWordJson[]).filter(overlaps),
+      segments: (t.segments).filter(overlaps),
+      words: (t.words).filter(overlaps),
     };
   }
 
@@ -454,9 +501,9 @@ export class VideosService {
     const v = await this.getOwned(userId, id);
     const now = new Date();
     await this.dataSource.transaction(async (m) => {
-      await m.update(Video, { id }, { deletedAt: now });
-      await m.update(Render, { videoId: id, deletedAt: IsNull() }, { deletedAt: now });
-      await m.update(Candidate, { videoId: id, supersededAt: IsNull() }, { supersededAt: now });
+      await m.update(Video, { video_id: id }, { deletedAt: now });
+      await m.update(Render, { video_id: id, deletedAt: IsNull() }, { deletedAt: now });
+      await m.update(Candidate, { video_id: id, supersededAt: IsNull() }, { supersededAt: now });
     });
     if (v.uploadId && v.objectKey) await this.storage.abortMultipart(v.objectKey, v.uploadId);
     try {

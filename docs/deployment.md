@@ -15,14 +15,14 @@ One Docker Compose project (`infra/docker-compose.yml`). PostgreSQL 16, Redis 7 
 apt update && apt install -y ca-certificates curl ufw
 curl -fsSL https://get.docker.com | sh
 ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw enable
-git clone <repo> /opt/clipforest && cd /opt/clipforest
+git clone <repo> /opt/cliprover && cd /opt/cliprover
 ```
 
 Point DNS (A/AAAA) for your domain at the server.
 
 ## 2. Cloudflare R2
 
-1. Create a bucket (e.g. `clipforest`) and an R2 API token with Object Read & Write on it.
+1. Create a bucket (e.g. `cliprover`) and an R2 API token with Object Read & Write on it.
 2. CORS (bucket → Settings → CORS policy) — required for browser uploads; `ETag` must be exposed for multipart:
 
 The origin here is the **web app's** origin — that is where the browser uploads from — not this API host.
@@ -64,6 +64,8 @@ Set at least:
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET` | from the R2 token |
 | `ASSEMBLYAI_API_KEY` (or Deepgram/Whisper) | hosted transcription |
 | `ANTHROPIC_API_KEY` | highlight analysis |
+| `BREVO_API_KEY` | transactional email — **without it password reset links are only written to the log** |
+| `MAIL_FROM_EMAIL` | a sender address verified in Brevo; the local default is rejected |
 | `METRICS_TOKEN` | if scraping `/api/metrics` from outside the host |
 
 Secrets live only in `.env` (mode 600) or your secret store — never in git.
@@ -79,6 +81,8 @@ curl -fsS https://api.clips.example.com/api/health/ready
 
 Then deploy the web app from its repository with `API_INTERNAL_URL=https://api.clips.example.com`. The two sides upgrade independently; the contract between them is `contracts/openapi.json`.
 
+That contract is **enforced by review, not by tooling**. Request bodies are fully typed (the `@nestjs/swagger` plugin derives them from the DTOs), but responses are documented as summaries only, and the web app's response types are hand-written. Nothing fails a build on either side when a response shape changes — so a change to what an endpoint returns has to be carried into the web app deliberately, and it is worth regenerating (`npm run build && npm run openapi`) and reading the diff before you ship one.
+
 The API applies pending TypeORM migrations on start (`DB_MIGRATIONS_RUN=false` to disable and run `npm run migration:run` separately). To upgrade: `git pull && docker compose --env-file ../.env up -d --build`. The worker finishes active jobs on `SIGTERM` (Compose default 10 s grace; raise `stop_grace_period` for long renders) and interrupted jobs are reclaimed by BullMQ and resumed idempotently.
 
 ## 5. Backups
@@ -86,11 +90,11 @@ The API applies pending TypeORM migrations on start (`DB_MIGRATIONS_RUN=false` t
 - PostgreSQL (authoritative state): nightly logical dump, keep 14 days, copy off-host (e.g. to a separate R2 bucket).
 
 ```bash
-# /etc/cron.d/clipforest-backup
-15 3 * * * root docker exec clipforest-postgres-1 pg_dump -U clipforest -Fc clipforest > /var/backups/clipforest-$(date +\%F).dump && find /var/backups -name 'clipforest-*.dump' -mtime +14 -delete
+# /etc/cron.d/cliprover-backup
+15 3 * * * root docker exec cliprover-postgres-1 pg_dump -U cliprover -Fc cliprover > /var/backups/cliprover-$(date +\%F).dump && find /var/backups -name 'cliprover-*.dump' -mtime +14 -delete
 ```
 
-  Restore: `docker exec -i clipforest-postgres-1 pg_restore -U clipforest -d clipforest --clean < file.dump`.
+  Restore: `docker exec -i cliprover-postgres-1 pg_restore -U cliprover -d cliprover --clean < file.dump`.
 - Redis holds queues only (AOF enabled); after a Redis loss the janitor re-enqueues `QUEUED` work, and videos stuck mid-stage can be retried from the UI.
 - R2 objects are durable; enable bucket versioning if you need accidental-delete protection.
 
@@ -98,7 +102,7 @@ The API applies pending TypeORM migrations on start (`DB_MIGRATIONS_RUN=false` t
 
 - `GET /api/health` (liveness) and `/api/health/ready` (DB, Redis, storage).
 - Prometheus: API `http://api:4000/api/metrics` (HTTP latency, queue depth by state, renders created/deduplicated — Caddy 404s this path from outside), worker `http://worker:9100/metrics` (jobs by outcome, stage durations, render seconds per output minute, transcription latency/minutes, LLM calls/tokens, candidates, framing strategy, temp-disk high-water and free bytes).
-- Alert on: `clipforest_temp_disk_free_bytes < DISK_MIN_FREE_BYTES * 1.5`, sustained `clipforest_queue_jobs{state="waiting",queue="render"}` growth, `clipforest_worker_jobs_total{outcome="failed"}` rate.
+- Alert on: `cliprover_temp_disk_free_bytes < DISK_MIN_FREE_BYTES * 1.5`, sustained `cliprover_queue_jobs{state="waiting",queue="render"}` growth, `cliprover_worker_jobs_total{outcome="failed"}` rate.
 - Logs are JSON on stdout with `correlationId`, `videoId`, `renderId`, `queueName`, `jobId`, `attempt`, `pipelineVersion`; no tokens or signed URLs are logged. `docker compose logs -f worker`.
 
 ## 7. Scaling out
